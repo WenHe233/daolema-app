@@ -19,8 +19,11 @@ class LockScreen extends StatelessWidget {
 
     return Container(
       color: p.bg,
-      padding: const EdgeInsets.fromLTRB(32, 120, 32, 40),
-      child: Column(
+      alignment: Alignment.topCenter,
+      child: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(32, 80, 32, 40),
+          child: Column(
         children: [
           AppLogo(palette: p, cell: 9, gap: 4, padding: 13, radius: 18, cellRadius: 2),
           const SizedBox(height: 18),
@@ -78,6 +81,8 @@ class LockScreen extends StatelessWidget {
             ),
           ),
         ],
+          ),
+        ),
       ),
     );
   }
