@@ -1,0 +1,393 @@
+name: Build and Release
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'nightly' }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+
+env:
+  FLUTTER_VERSION: '3.44.2'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      channel: ${{ steps.version.outputs.channel }}
+      build_name: ${{ steps.version.outputs.build_name }}
+      build_number: ${{ steps.version.outputs.build_number }}
+      display_version: ${{ steps.version.outputs.display_version }}
+      artifact_label: ${{ steps.version.outputs.artifact_label }}
+      release_tag: ${{ steps.version.outputs.release_tag }}
+      release_name: ${{ steps.version.outputs.release_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pubspec_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
+          build_name="${pubspec_version%%+*}"
+          if [[ ! "$build_name" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid pubspec version: $pubspec_version" >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            release_tag="$GITHUB_REF_NAME"
+            tag_version="${release_tag#v}"
+            if [[ ! "$tag_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+              echo "Release tag must match vX.Y.Z: $release_tag" >&2
+              exit 1
+            fi
+            if [[ "$tag_version" != "$build_name" ]]; then
+              echo "Tag $tag_version does not match pubspec $build_name" >&2
+              exit 1
+            fi
+            channel=stable
+            display_version="v$tag_version"
+            artifact_label="$tag_version"
+            release_name="v$tag_version"
+          else
+            timestamp="$(date -u +%Y%m%d.%H%M)"
+            short_sha="${GITHUB_SHA:0:7}"
+            channel=nightly
+            display_version="v${build_name}-nightly.${timestamp}+${short_sha}"
+            artifact_label=nightly
+            release_tag=nightly
+            release_name="Nightly ${timestamp} (${short_sha})"
+          fi
+
+          {
+            echo "channel=$channel"
+            echo "build_name=$build_name"
+            echo "build_number=$GITHUB_RUN_NUMBER"
+            echo "display_version=$display_version"
+            echo "artifact_label=$artifact_label"
+            echo "release_tag=$release_tag"
+            echo "release_name=$release_name"
+          } >> "$GITHUB_OUTPUT"
+
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Verify generated Drift code
+        shell: bash
+        run: |
+          dart run build_runner build --delete-conflicting-outputs
+          git diff --exit-code -- lib/data/db/database.g.dart
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  windows:
+    needs: [version, quality]
+    runs-on: windows-latest
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+      DISPLAY_VERSION: ${{ needs.version.outputs.display_version }}
+      ARTIFACT_LABEL: ${{ needs.version.outputs.artifact_label }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build Windows release
+        shell: pwsh
+        run: |
+          flutter build windows --release `
+            --build-name="$env:BUILD_NAME" `
+            --build-number="$env:BUILD_NUMBER" `
+            --dart-define="APP_VERSION=$env:DISPLAY_VERSION"
+
+      - name: Build Inno Setup installer
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DMyAppVersion=$env:BUILD_NAME" `
+            "/DArtifactLabel=$env:ARTIFACT_LABEL" `
+            windows\packaging\inno_setup.iss
+          $installer = "windows\packaging\dist\Daolema-$env:ARTIFACT_LABEL-windows-x64-setup.exe"
+          if (-not (Test-Path -LiteralPath $installer)) {
+            throw "Installer not found: $installer"
+          }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: windows/packaging/dist/*.exe
+          if-no-files-found: error
+
+  macos-ios:
+    needs: [version, quality]
+    runs-on: macos-latest
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+      DISPLAY_VERSION: ${{ needs.version.outputs.display_version }}
+      ARTIFACT_LABEL: ${{ needs.version.outputs.artifact_label }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build macOS DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build macos --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define="APP_VERSION=$DISPLAY_VERSION"
+          app="build/macos/Build/Products/Release/daolema.app"
+          [[ -d "$app" ]] || { echo "macOS app not found: $app" >&2; exit 1; }
+          rm -rf dist/dmg
+          mkdir -p dist/dmg
+          cp -R "$app" dist/dmg/
+          ln -s /Applications dist/dmg/Applications
+          dmg="dist/Daolema-${ARTIFACT_LABEL}-macos-universal.dmg"
+          hdiutil create -volname Daolema -srcfolder dist/dmg -ov -format UDZO "$dmg"
+          hdiutil verify "$dmg"
+          rm -rf dist/dmg
+
+      - name: Build unsigned iOS IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build ios --release --no-codesign \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define="APP_VERSION=$DISPLAY_VERSION"
+          app="build/ios/iphoneos/Runner.app"
+          [[ -d "$app" ]] || { echo "iOS app not found: $app" >&2; exit 1; }
+          rm -rf dist/ios
+          mkdir -p dist/ios/Payload
+          cp -R "$app" dist/ios/Payload/
+          ipa="$PWD/dist/Daolema-${ARTIFACT_LABEL}-ios-unsigned.ipa"
+          (cd dist/ios && zip -qry "$ipa" Payload)
+          unzip -t "$ipa"
+          rm -rf dist/ios
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-macos-ios
+          path: |
+            dist/*.dmg
+            dist/*.ipa
+          if-no-files-found: error
+
+  linux-android:
+    needs: [version, quality]
+    runs-on: ubuntu-22.04
+    env:
+      BUILD_NAME: ${{ needs.version.outputs.build_name }}
+      BUILD_NUMBER: ${{ needs.version.outputs.build_number }}
+      DISPLAY_VERSION: ${{ needs.version.outputs.display_version }}
+      ARTIFACT_LABEL: ${{ needs.version.outputs.artifact_label }}
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+
+      - name: Install Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake file libfuse2 libgtk-3-dev liblzma-dev libsecret-1-dev ninja-build patchelf pkg-config
+
+      - name: Install pinned AppImage tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd /tmp
+          curl -fL -o linuxdeploy-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20250213-2/linuxdeploy-x86_64.AppImage
+          curl -fL -o linuxdeploy-plugin-appimage-x86_64.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-appimage/releases/download/1-alpha-20250213-1/linuxdeploy-plugin-appimage-x86_64.AppImage
+          echo '4648f278ab3ef31f819e67c30d50f462640e5365a77637d7e6f2ad9fd0b4522a  linuxdeploy-x86_64.AppImage' | sha256sum -c -
+          echo '992d502a248e14ab185448ddf6f6e7d25558cb84d4623c354c3af350c25fccb3  linuxdeploy-plugin-appimage-x86_64.AppImage' | sha256sum -c -
+          sudo install -m 0755 linuxdeploy-x86_64.AppImage /usr/local/bin/linuxdeploy-x86_64.AppImage
+          sudo install -m 0755 linuxdeploy-plugin-appimage-x86_64.AppImage /usr/local/bin/linuxdeploy-plugin-appimage
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+
+      - name: Build Linux packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build linux --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define="APP_VERSION=$DISPLAY_VERSION"
+          LINUXDEPLOY=/usr/local/bin/linuxdeploy-x86_64.AppImage \
+            bash linux/packaging/build_appimage.sh "$BUILD_NAME" "$ARTIFACT_LABEL"
+          bash linux/packaging/build_deb.sh "$BUILD_NAME" "$ARTIFACT_LABEL" "$BUILD_NUMBER"
+          appimage="dist/Daolema-${ARTIFACT_LABEL}-linux-x86_64.AppImage"
+          chmod +x "$appimage"
+          (cd /tmp && "$GITHUB_WORKSPACE/$appimage" --appimage-extract >/dev/null)
+          dpkg-deb --info "dist/daolema_${ARTIFACT_LABEL}_amd64.deb"
+
+      - name: Configure Android signing
+        id: android-signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          values=(
+            "$ANDROID_KEYSTORE_BASE64"
+            "$ANDROID_KEYSTORE_PASSWORD"
+            "$ANDROID_KEY_ALIAS"
+            "$ANDROID_KEY_PASSWORD"
+          )
+          configured=0
+          for value in "${values[@]}"; do
+            [[ -n "$value" ]] && configured=$((configured + 1))
+          done
+          if [[ "$configured" -eq 0 ]]; then
+            echo '::warning::Android signing secrets are absent; using the debug signing key.'
+            echo 'status=debug' >> "$GITHUB_OUTPUT"
+          elif [[ "$configured" -ne 4 ]]; then
+            echo 'Android signing secrets are only partially configured.' >&2
+            exit 1
+          else
+            printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/upload-keystore.jks
+            cat > android/key.properties <<EOF
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyPassword=$ANDROID_KEY_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          storeFile=upload-keystore.jks
+          EOF
+            echo 'status=release' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build Android APK
+        shell: bash
+        run: |
+          set -euo pipefail
+          flutter build apk --release \
+            --build-name="$BUILD_NAME" \
+            --build-number="$BUILD_NUMBER" \
+            --dart-define="APP_VERSION=$DISPLAY_VERSION"
+          apk="build/app/outputs/flutter-apk/app-release.apk"
+          apksigner="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          [[ -x "$apksigner" ]] || { echo 'apksigner not found' >&2; exit 1; }
+          "$apksigner" verify --verbose "$apk"
+          cp "$apk" "dist/Daolema-${ARTIFACT_LABEL}-android.apk"
+
+      - name: Write Android signing summary
+        shell: bash
+        run: |
+          echo "Android signing mode: ${{ steps.android-signing.outputs.status }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-linux-android
+          path: |
+            dist/*.AppImage
+            dist/*.deb
+            dist/*.apk
+          if-no-files-found: error
+
+  release:
+    needs: [version, windows, macos-ios, linux-android]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
+
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-artifacts
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: Move nightly tag
+        if: needs.version.outputs.channel == 'nightly'
+        shell: bash
+        run: |
+          git tag --force nightly "$GITHUB_SHA"
+          git push origin refs/tags/nightly --force
+
+      - name: Publish stable release
+        if: needs.version.outputs.channel == 'stable'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.version.outputs.release_tag }}
+          name: ${{ needs.version.outputs.release_name }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+          files: release-artifacts/*
+
+      - name: Publish nightly pre-release
+        if: needs.version.outputs.channel == 'nightly'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: ${{ needs.version.outputs.release_name }}
+          prerelease: true
+          make_latest: false
+          fail_on_unmatched_files: true
+          body: |
+            Automated nightly build from `${{ github.sha }}`.
+
+            This rolling pre-release is replaced on every push to `main`.
+          files: release-artifacts/*
