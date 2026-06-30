@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Daolema
+Name[zh_CN]=导了吗
+GenericName=Personal Record Tracker
+GenericName[zh_CN]=个人状态记录
+Comment=Private personal record and statistics app
+Comment[zh_CN]=私密的个人状态记录与统计应用
+Exec=daolema
+Icon=daolema
+Terminal=false
+Categories=Utility;
+StartupNotify=true
