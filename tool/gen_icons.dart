@@ -1,4 +1,5 @@
-// 一次性图标生成器：把现有 AppLogo 渲染成 PNG，供 flutter_launcher_icons 使用。
+// 一次性图标生成器：把 AppLogo 的 3×3 网格（无边框）渲染成方形 PNG，
+// 供 flutter_launcher_icons 使用。外层圆角交给系统，源图不烘焙圆角框。
 // 运行：flutter test tool/gen_icons.dart
 // （放在 tool/ 而非 test/，避免被 CI 的 `flutter test` 误跑）
 import 'dart:io';
@@ -15,39 +16,36 @@ const _canvas = 1024.0;
 
 void main() {
   final palette = AppPalette.resolve(ThemeKey.light, AccentKey.green);
-  // 复用关于页同款 logo 比例，靠 FittedBox 放大到目标尺寸。
-  final logo = AppLogo(
+  // 只要网格，无外层边框/圆角；靠 FittedBox 放大到目标尺寸。
+  final grid = AppLogo(
     palette: palette,
     cell: 12,
     gap: 5,
-    padding: 16,
-    radius: 20,
     cellRadius: 3,
+    showFrame: false,
   );
 
-  testWidgets('生成 app 图标 PNG', (tester) async {
-    // 主图标：不透明纸张底 + logo 约占 78%
+  testWidgets('生成 app 图标 PNG（方形、无边框）', (tester) async {
+    // 关键：把测试画布设为 1024×1024 正方形，否则默认 800×600 会把图标压成长方形。
+    await tester.binding.setSurfaceSize(const Size(_canvas, _canvas));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // 主图标：纸张底满铺 + 居中网格(约 62%)
     await _capture(
       tester,
       Container(
-        width: _canvas,
-        height: _canvas,
         color: _bg,
         alignment: Alignment.center,
-        child: SizedBox(width: 800, height: 800, child: FittedBox(child: logo)),
+        child: SizedBox(width: 640, height: 640, child: FittedBox(child: grid)),
       ),
       'assets/icon/app_icon.png',
     );
 
-    // Android 自适应前景：透明底 + logo 约占 58%（留安全边）
+    // Android 自适应前景：透明底 + 居中网格(约 58%，留安全边)
     await _capture(
       tester,
-      SizedBox(
-        width: _canvas,
-        height: _canvas,
-        child: Center(
-          child: SizedBox(width: 600, height: 600, child: FittedBox(child: logo)),
-        ),
+      Center(
+        child: SizedBox(width: 600, height: 600, child: FittedBox(child: grid)),
       ),
       'assets/icon/app_icon_foreground.png',
     );

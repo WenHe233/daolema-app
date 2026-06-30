@@ -13,6 +13,7 @@ class AppLogo extends StatelessWidget {
     this.padding = 5,
     this.radius = 8,
     this.cellRadius = 1.5,
+    this.showFrame = true,
   });
 
   final AppPalette palette;
@@ -21,6 +22,9 @@ class AppLogo extends StatelessWidget {
   final double padding;
   final double radius;
   final double cellRadius;
+
+  /// 是否显示外层圆角边框（App 图标场景设为 false——只要网格，外圆角交给系统）。
+  final bool showFrame;
 
   @override
   Widget build(BuildContext context) {
@@ -53,13 +57,15 @@ class AppLogo extends StatelessWidget {
       ));
       if (r < 2) rows.add(SizedBox(height: gap));
     }
+    final grid = Column(mainAxisSize: MainAxisSize.min, children: rows);
+    if (!showFrame) return grid;
     return Container(
       padding: EdgeInsets.all(padding),
       decoration: BoxDecoration(
         border: Border.all(color: palette.line),
         borderRadius: BorderRadius.circular(radius),
       ),
-      child: Column(mainAxisSize: MainAxisSize.min, children: rows),
+      child: grid,
     );
   }
 }
