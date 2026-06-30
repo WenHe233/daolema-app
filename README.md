@@ -13,6 +13,18 @@
 一个**私密、克制、中性**的个人状态记录与统计 App（Flutter，iOS / Android / macOS / Windows / Linux）。
 用 GitHub 风格年度热力图、趋势统计、标签分析与目标管理，帮你安静地观察自己的节奏与习惯——不评判、不说教。
 
+## 截图
+
+<p align="center">
+  <img src="docs/1.png" alt="首页" width="240" />
+  &nbsp;&nbsp;
+  <img src="docs/2.png" alt="日历" width="240" />
+  &nbsp;&nbsp;
+  <img src="docs/3.png" alt="统计" width="240" />
+</p>
+
+<p align="center">首页 · 日历 · 统计</p>
+
 ## 功能
 
 底部导航四页 + 多个覆盖层：
