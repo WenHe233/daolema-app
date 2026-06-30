@@ -1,11 +1,17 @@
-# 导了吗 · daolema
+<p align="center">
+  <img src="assets/icon/app_icon.png" alt="导了吗 App 图标" width="120" />
+</p>
+
+<h1 align="center">导了吗 · daolema</h1>
+
+<p align="center">
+  <img src="https://img.shields.io/github/license/WenHe233/daolema-app" alt="License" />
+  <img src="https://img.shields.io/github/stars/WenHe233/daolema-app?style=flat" alt="GitHub stars" />
+  <img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome" />
+</p>
 
 一个**私密、克制、中性**的个人状态记录与统计 App（Flutter，iOS / Android / macOS / Windows / Linux）。
 用 GitHub 风格年度热力图、趋势统计、标签分析与目标管理，帮你安静地观察自己的节奏与习惯——不评判、不说教。
-
-> 本项目由 Claude Design 导出的高保真原型 `导了吗.dc.html` 1:1 实现而来。原型为
-> HTML/CSS/JS 编排，这里按"还原视觉、而非照搬原型脚手架"的原则用 Flutter 重建
-> （不复刻原型里的手机外框与假状态栏，App 直接铺满真机屏幕）。
 
 ## 功能
 
@@ -78,43 +84,3 @@ windows/packaging/           Inno Setup 安装器配置
 - **导入（真实）**：选择文件后自动识别「加密信封 / JSON / CSV」（加密的先要口令解密），再询问「合并（按 id 去重）」或「覆盖（清空后导入）」。
 
 > 平台说明：`local_auth` 在 Android、iOS、macOS、Windows 上按设备能力工作；Linux 会提示不支持生物识别。
-
-## CI 与发布
-
-`.github/workflows/release.yml` 是五平台正式发布与可复用构建流程，`.github/workflows/pre-release.yml` 调用它生成 nightly。两条流程都会先执行静态分析、单元测试和代码生成一致性检查，并在全部平台构建成功后上传：
-
-- `Daolema-<版本>-android.apk`
-- `Daolema-<版本>-windows-x64-setup.exe`
-- `Daolema-<版本>-macos-universal.dmg`
-- `Daolema-<版本>-ios-unsigned.ipa`
-- `Daolema-<版本>-linux-x86_64.AppImage`
-- `daolema_<版本>_amd64.deb`
-- `SHA256SUMS.txt`
-
-### 正式版本
-
-先同步更新 `pubspec.yaml` 的基础版本和 `lib/app_info.dart` 的本地默认显示版本，再推送严格格式为 `vX.Y.Z` 的 tag：
-
-```bash
-git tag v1.0.1
-git push origin v1.0.1
-```
-
-tag 必须与 `pubspec.yaml` 的基础版本一致。流水线会创建正式 GitHub Release，并自动生成 release notes。
-
-### Nightly
-
-每次 push 到 `main` 都会触发 `pre-release.yml` 构建 nightly；手动运行该工作流也执行相同行为。nightly 使用固定的 `nightly` tag 和 pre-release，资产名称固定并覆盖上一版，应用内显示版本包含 UTC 时间与短 commit SHA。
-
-### Android 签名
-
-配置以下四个 GitHub Actions Secrets 后，APK 使用正式 keystore 签名：
-
-- `ANDROID_KEYSTORE_BASE64`
-- `ANDROID_KEYSTORE_PASSWORD`
-- `ANDROID_KEY_ALIAS`
-- `ANDROID_KEY_PASSWORD`
-
-四项全部缺失时流水线明确警告并回退到当前 debug 签名；只配置一部分时直接失败，避免生成签名状态不明的 APK。
-
-> iOS IPA 未签名；macOS DMG 和 Windows 安装器未做开发者签名或公证，适合测试和 GitHub 直发，不等同于应用商店发行包。
