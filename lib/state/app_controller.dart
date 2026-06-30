@@ -74,16 +74,16 @@ class AppController extends ChangeNotifier {
     FilePickService? filePickService,
     AuthService? authService,
     DateTime? now,
-  })  : _recordRepo = recordRepo,
-        _settingsRepo = settingsRepo,
-        _records = records,
-        _settings = settings,
-        _goals = goals,
-        _tags = tags,
-        _pinIsSet = pinIsSet,
-        _share = shareService ?? ShareService(),
-        _filePick = filePickService ?? FilePickService(),
-        _auth = authService ?? AuthService() {
+  }) : _recordRepo = recordRepo,
+       _settingsRepo = settingsRepo,
+       _records = records,
+       _settings = settings,
+       _goals = goals,
+       _tags = tags,
+       _pinIsSet = pinIsSet,
+       _share = shareService ?? ShareService(),
+       _filePick = filePickService ?? FilePickService(),
+       _auth = authService ?? AuthService() {
     today = midnight(now ?? DateTime.now());
     calY = today.year;
     calM = today.month - 1; // 0-based，对齐源原型
@@ -127,7 +127,8 @@ class AppController extends ChangeNotifier {
   AppSettings get settings => _settings;
   Goals get goals => _goals;
   List<String> get tags => _tags;
-  AppPalette get palette => AppPalette.resolve(_settings.theme, _settings.accent);
+  AppPalette get palette =>
+      AppPalette.resolve(_settings.theme, _settings.accent);
 
   String get todayKey => dateKey(today);
 
@@ -181,7 +182,8 @@ class AppController extends ChangeNotifier {
 
   // ---- 目标 ----
   String get goalText => '${counts.week} / ${_goals.weekMax}';
-  int get goalPct => math.min(100, (counts.week / _goals.weekMax * 100).round());
+  int get goalPct =>
+      math.min(100, (counts.week / _goals.weekMax * 100).round());
   String get goalSub {
     if (!_goals.enabled) return '未设目标，仅记录';
     final w = counts.week;
@@ -198,8 +200,12 @@ class AppController extends ChangeNotifier {
   String get avoidText => _goals.avoidEnabled ? '00:00 – 06:00 不提醒' : '未开启';
 
   // ---- 派生数据 ----
-  HeatData get heat =>
-      buildHeat(countMap(_records), today, _settings.weekStartMonday, palette.heat);
+  HeatData get heat => buildHeat(
+    countMap(_records),
+    today,
+    _settings.weekStartMonday,
+    palette.heat,
+  );
 
   StatsData get statsData =>
       computeStats(_records, today, range, _settings.weekStartMonday);
@@ -225,26 +231,34 @@ class AppController extends ChangeNotifier {
     final dim = DateTime(calY, calM + 2, 0).day;
     final cells = <CalCell>[];
     for (var i = 0; i < lead; i++) {
-      cells.add(const CalCell(
-        selectable: false,
-        circleBg: Color(0x00000000),
-        numColor: Color(0x00000000),
-        dotColor: Color(0x00000000),
-      ));
+      cells.add(
+        const CalCell(
+          selectable: false,
+          circleBg: Color(0x00000000),
+          numColor: Color(0x00000000),
+          dotColor: Color(0x00000000),
+        ),
+      );
     }
     for (var d = 1; d <= dim; d++) {
       final dk = '$calY-${pad2(calM + 1)}-${pad2(d)}';
       final c = cm[dk] ?? 0;
       final isToday = dk == todayKey;
       final isSel = dk == selectedDate;
-      cells.add(CalCell(
-        day: d,
-        dateKey: dk,
-        selectable: true,
-        circleBg: isSel ? p.accent : (isToday ? p.accentSoft : const Color(0x00000000)),
-        numColor: isSel ? p.accentInk : (isToday ? p.accent : p.ink),
-        dotColor: c > 0 ? heatColorFor(c, false, p.heat) : const Color(0x00000000),
-      ));
+      cells.add(
+        CalCell(
+          day: d,
+          dateKey: dk,
+          selectable: true,
+          circleBg: isSel
+              ? p.accent
+              : (isToday ? p.accentSoft : const Color(0x00000000)),
+          numColor: isSel ? p.accentInk : (isToday ? p.accent : p.ink),
+          dotColor: c > 0
+              ? heatColorFor(c, false, p.heat)
+              : const Color(0x00000000),
+        ),
+      );
     }
     return cells;
   }
@@ -613,18 +627,22 @@ class AppController extends ChangeNotifier {
   }
 
   String currentBackupJson() => BackupService.buildBackupJson(
-        records: _records,
-        settings: _settings,
-        goals: _goals,
-        tags: _tags,
-      );
+    records: _records,
+    settings: _settings,
+    goals: _goals,
+    tags: _tags,
+  );
 
   Future<void> exportCsv() async {
     try {
       final csv = BackupService.recordsToCsv(_records);
-      await _share.shareTextFile('daolema-records-${_fileStamp()}.csv', csv,
-          subject: '导了吗 · 记录导出');
-      flash('已导出 CSV');
+      final result = await _share.deliverTextFile(
+        'daolema-records-${_fileStamp()}.csv',
+        csv,
+        subject: '导了吗 · 记录导出',
+      );
+      if (result == FileDeliveryResult.cancelled) return;
+      flash(result == FileDeliveryResult.saved ? '已保存 CSV' : '已导出 CSV');
     } catch (_) {
       flash('导出失败');
     }
@@ -632,10 +650,13 @@ class AppController extends ChangeNotifier {
 
   Future<void> exportJson() async {
     try {
-      await _share.shareTextFile('daolema-backup-${_fileStamp()}.json',
-          currentBackupJson(),
-          subject: '导了吗 · 数据备份');
-      flash('已导出 JSON');
+      final result = await _share.deliverTextFile(
+        'daolema-backup-${_fileStamp()}.json',
+        currentBackupJson(),
+        subject: '导了吗 · 数据备份',
+      );
+      if (result == FileDeliveryResult.cancelled) return;
+      flash(result == FileDeliveryResult.saved ? '已保存 JSON' : '已导出 JSON');
     } catch (_) {
       flash('导出失败');
     }
@@ -644,10 +665,17 @@ class AppController extends ChangeNotifier {
   /// 用口令创建加密备份并分享。
   Future<void> createEncryptedBackup(String passphrase) async {
     try {
-      final enc = await BackupService.encryptBackup(currentBackupJson(), passphrase);
-      await _share.shareTextFile('daolema-encrypted-${_fileStamp()}.json', enc,
-          subject: '导了吗 · 加密备份');
-      flash('已创建加密备份');
+      final enc = await BackupService.encryptBackup(
+        currentBackupJson(),
+        passphrase,
+      );
+      final result = await _share.deliverTextFile(
+        'daolema-encrypted-${_fileStamp()}.json',
+        enc,
+        subject: '导了吗 · 加密备份',
+      );
+      if (result == FileDeliveryResult.cancelled) return;
+      flash(result == FileDeliveryResult.saved ? '已保存加密备份' : '已创建加密备份');
     } catch (_) {
       flash('备份失败');
     }
