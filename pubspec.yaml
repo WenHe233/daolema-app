@@ -52,6 +52,7 @@ dependencies:
   crypto: ^3.0.7
   file_selector: ^1.1.0
   file_selector_android: ^0.5.2+8
+  url_launcher: ^6.3.2
 
 dev_dependencies:
   flutter_test:
@@ -65,6 +66,7 @@ dev_dependencies:
   flutter_lints: ^6.0.0
   drift_dev: ^2.34.0
   build_runner: ^2.15.0
+  flutter_launcher_icons: 0.14.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -107,3 +109,17 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+# App 图标：源图由 `flutter test tool/gen_icons.dart` 从 AppLogo 渲染生成，
+# 再运行 `dart run flutter_launcher_icons` 生成各平台图标。
+flutter_launcher_icons:
+  image_path: "assets/icon/app_icon.png"
+  android: true
+  ios: true
+  remove_alpha_ios: true
+  adaptive_icon_background: "#f1ece3"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    icon_size: 256

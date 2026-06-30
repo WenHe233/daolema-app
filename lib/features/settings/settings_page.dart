@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../app_info.dart';
 import '../../data/backup_service.dart';
 import '../../data/models/record_entry.dart';
 import '../../state/app_controller.dart';
@@ -203,7 +204,7 @@ class SettingsPage extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         Center(
-          child: Text('${c.appName} v1.0 · 数据仅保存在本机',
+          child: Text('${c.appName} $kAppVersion',
               style: AppText.body(size: 12, color: p.ink3)),
         ),
       ],

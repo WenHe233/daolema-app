@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../app_info.dart';
 import '../../state/app_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/app_logo.dart';
+import '../../widgets/common.dart';
 import 'overlay_scaffold.dart';
 
 class AboutOverlay extends StatelessWidget {
   const AboutOverlay({super.key});
+
+  Future<void> _openProject() async {
+    final uri = Uri.parse(kProjectUrl);
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,17 +41,28 @@ class AboutOverlay extends StatelessWidget {
             const SizedBox(height: 18),
             Text(c.appName, style: AppText.serif(size: 24, color: p.ink)),
             const SizedBox(height: 4),
-            Text('版本 1.0.0', style: AppText.body(size: 13, color: p.ink3)),
+            Text(kAppVersion, style: AppText.body(size: 13, color: p.ink3)),
           ],
         ),
         const SizedBox(height: 32),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            '一个安静、克制的个人状态记录工具。它只是帮你看见自己的节奏与习惯，不评判、不说教。\n\n'
-            '所有数据本地优先存储，支持 App 锁、伪装模式与加密备份。你的记录，只属于你自己。',
-            style: AppText.body(size: 15, color: p.ink2, height: 1.9),
-          ),
+        GroupedCard(
+          palette: p,
+          children: [
+            SettingsRow(
+              palette: p,
+              title: '项目地址',
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('WenHe233/daolema-app',
+                      style: AppText.body(size: 13, color: p.ink3)),
+                  const SizedBox(width: 4),
+                  Text('›', style: AppText.body(size: 16, color: p.ink3)),
+                ],
+              ),
+              onTap: _openProject,
+            ),
+          ],
         ),
       ],
     );
