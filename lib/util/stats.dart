@@ -91,6 +91,7 @@ class TagRankItem {
 class StatsData {
   StatsData({
     required this.trend,
+    required this.trendDates,
     required this.maxTrend,
     required this.weekdayBars,
     required this.todBars,
@@ -100,6 +101,7 @@ class StatsData {
     required this.trendEnd,
   });
   final List<int> trend;
+  final List<DateTime> trendDates; // 与 trend 一一对应的日期
   final int maxTrend;
   final List<StatBar> weekdayBars;
   final List<StatBar> todBars;
@@ -134,9 +136,11 @@ StatsData computeStats(
     perDay[r.date] = (perDay[r.date] ?? 0) + r.occ;
   }
   final trend = <int>[];
+  final trendDates = <DateTime>[];
   for (var i = 0; i < days; i++) {
     final d = startDay.add(Duration(days: i));
     trend.add(perDay[dateKey(d)] ?? 0);
+    trendDates.add(d);
   }
   final maxTrend = math.max(1, trend.fold(0, math.max));
 
@@ -180,6 +184,7 @@ StatsData computeStats(
 
   return StatsData(
     trend: trend,
+    trendDates: trendDates,
     maxTrend: maxTrend,
     weekdayBars: weekdayBars,
     todBars: todBars,

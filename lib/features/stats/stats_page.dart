@@ -8,15 +8,22 @@ import '../../widgets/common.dart';
 import '../home/home_page.dart' show ProgressBar;
 import 'widgets/charts.dart';
 
-class StatsPage extends StatelessWidget {
+class StatsPage extends StatefulWidget {
   const StatsPage({super.key});
 
+  @override
+  State<StatsPage> createState() => _StatsPageState();
+}
+
+class _StatsPageState extends State<StatsPage> {
   static const _ranges = [
     ('7', '7 天'),
     ('30', '30 天'),
     ('90', '90 天'),
     ('year', '今年'),
   ];
+
+  int? _trendSel; // 趋势图选中点（点图表以外区域清除）
 
   @override
   Widget build(BuildContext context) {
@@ -25,6 +32,9 @@ class StatsPage extends StatelessWidget {
     final counts = c.counts;
     final stats = c.statsData;
     final iv = c.intervals;
+
+    // 选中索引可能因区间切换而越界，渲染时夹取。
+    final sel = (_trendSel != null && _trendSel! < stats.trend.length) ? _trendSel : null;
 
     final overview = [
       ('今日', '${counts.today}'),
@@ -35,10 +45,15 @@ class StatsPage extends StatelessWidget {
       ('日均', stats.avgDaily),
     ];
 
-    return ListView(
-      padding: const EdgeInsets.fromLTRB(24, 64, 24, 108),
-      children: [
-        Text('统计', style: AppText.serif(size: 30, color: p.ink)),
+    return GestureDetector(
+      behavior: HitTestBehavior.translucent,
+      onTap: () {
+        if (_trendSel != null) setState(() => _trendSel = null);
+      },
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(24, 64, 24, 108),
+        children: [
+          Text('统计', style: AppText.serif(size: 30, color: p.ink)),
         const SizedBox(height: 20),
         // 区间切换
         SegmentedTabs(
@@ -53,14 +68,24 @@ class StatsPage extends StatelessWidget {
         const SizedBox(height: 30),
         _StatHeader('次数趋势', p),
         const SizedBox(height: 16),
-        TrendChart(palette: p, trend: stats.trend, maxTrend: stats.maxTrend),
+        TrendChart(
+          palette: p,
+          trend: stats.trend,
+          dates: stats.trendDates,
+          maxTrend: stats.maxTrend,
+          selected: sel,
+          onSelectedChanged: (i) => setState(() => _trendSel = i),
+        ),
         const SizedBox(height: 8),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(stats.trendStart, style: AppText.body(size: 11, color: p.ink3)),
-            Text(stats.trendEnd, style: AppText.body(size: 11, color: p.ink3)),
-          ],
+        Padding(
+          padding: const EdgeInsets.only(left: 26), // 与纵轴 gutter 对齐
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(stats.trendStart, style: AppText.body(size: 11, color: p.ink3)),
+              Text(stats.trendEnd, style: AppText.body(size: 11, color: p.ink3)),
+            ],
+          ),
         ),
         const SizedBox(height: 30),
         _StatHeader('星期分布', p),
@@ -72,9 +97,8 @@ class StatsPage extends StatelessWidget {
         StatBars(
           palette: p,
           bars: stats.todBars,
-          barColor: p.ink2,
+          barColor: p.accent,
           barMaxWidth: 26,
-          barOpacity: 0.55,
         ),
         const SizedBox(height: 30),
         _StatHeader('标签排行', p),
@@ -110,7 +134,8 @@ class StatsPage extends StatelessWidget {
         const SizedBox(height: 30),
         _StatHeader('间隔统计', p),
         _IntervalRows(palette: p, avg: iv.avg, max: iv.max, since: iv.since),
-      ],
+        ],
+      ),
     );
   }
 }

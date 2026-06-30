@@ -53,6 +53,13 @@ void main() {
       expect(s30.trend.length, 30);
     });
 
+    test('趋势日期与趋势一一对应，末项为今天', () {
+      final recs = generateSeed(fixedToday);
+      final s = computeStats(recs, fixedToday, '30', true);
+      expect(s.trendDates.length, s.trend.length);
+      expect(dateKey(s.trendDates.last), dateKey(fixedToday));
+    });
+
     test('星期分布 7 条、时间段分布 6 条', () {
       final recs = generateSeed(fixedToday);
       final s = computeStats(recs, fixedToday, '30', true);
