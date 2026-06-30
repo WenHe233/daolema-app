@@ -48,12 +48,15 @@ class CalendarPage extends StatelessWidget {
           decoration: BoxDecoration(
             border: Border(bottom: BorderSide(color: p.line)),
           ),
-          child: GridView.count(
+          child: GridView(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 7,
-            mainAxisSpacing: 4,
-            crossAxisSpacing: 4,
+            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 7,
+              mainAxisSpacing: 4,
+              crossAxisSpacing: 4,
+              mainAxisExtent: 50, // 固定行高，容纳 圆(32)+间距(3)+点(5)，避免窄屏溢出
+            ),
             children: [
               for (final cell in cells) _DayCell(palette: p, cell: cell, onTap: c.selectDate),
             ],

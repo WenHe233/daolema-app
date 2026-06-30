@@ -98,37 +98,34 @@ class StatBars extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = palette;
-    return SizedBox(
-      height: 90,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          for (var i = 0; i < bars.length; i++) ...[
-            if (i > 0) const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.end,
-                children: [
-                  Text('${bars[i].count}',
-                      style: AppText.body(size: 10, color: p.ink3)),
-                  const SizedBox(height: 7),
-                  Container(
-                    width: barMaxWidth,
-                    height: (bars[i].frac * 72).clamp(3, 72),
-                    decoration: BoxDecoration(
-                      color: barColor.withValues(alpha: barOpacity),
-                      borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
-                    ),
+    // 列高 = 数字 + 间距 + 柱(≤72) + 间距 + 标签；不写死容器高度，按内容自适应，避免溢出。
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (var i = 0; i < bars.length; i++) ...[
+          if (i > 0) const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text('${bars[i].count}',
+                    style: AppText.body(size: 10, color: p.ink3)),
+                const SizedBox(height: 7),
+                Container(
+                  width: barMaxWidth,
+                  height: (bars[i].frac * 72).clamp(3, 72),
+                  decoration: BoxDecoration(
+                    color: barColor.withValues(alpha: barOpacity),
+                    borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
                   ),
-                  const SizedBox(height: 7),
-                  Text(bars[i].label,
-                      style: AppText.body(size: 10, color: p.ink3)),
-                ],
-              ),
+                ),
+                const SizedBox(height: 7),
+                Text(bars[i].label, style: AppText.body(size: 10, color: p.ink3)),
+              ],
             ),
-          ],
+          ),
         ],
-      ),
+      ],
     );
   }
 }
