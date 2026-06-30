@@ -3,10 +3,14 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../data/auth_service.dart';
+import '../data/backup_service.dart';
+import '../data/file_pick_service.dart';
 import '../data/models/app_models.dart';
 import '../data/models/record_entry.dart';
 import '../data/repositories/record_repository.dart';
 import '../data/repositories/settings_repository.dart';
+import '../data/share_service.dart';
 import '../theme/palette.dart';
 import '../util/dates.dart';
 import '../util/stats.dart';
@@ -65,27 +69,39 @@ class AppController extends ChangeNotifier {
     required AppSettings settings,
     required Goals goals,
     required List<String> tags,
+    bool pinIsSet = false,
+    ShareService? shareService,
+    FilePickService? filePickService,
+    AuthService? authService,
     DateTime? now,
   })  : _recordRepo = recordRepo,
         _settingsRepo = settingsRepo,
         _records = records,
         _settings = settings,
         _goals = goals,
-        _tags = tags {
+        _tags = tags,
+        _pinIsSet = pinIsSet,
+        _share = shareService ?? ShareService(),
+        _filePick = filePickService ?? FilePickService(),
+        _auth = authService ?? AuthService() {
     today = midnight(now ?? DateTime.now());
     calY = today.year;
     calM = today.month - 1; // 0-based，对齐源原型
     selectedDate = dateKey(today);
-    locked = settings.appLock; // App 锁开启则启动即锁
+    locked = settings.appLock && pinIsSet; // App 锁开启且已设 PIN 才启动即锁
   }
 
   final RecordRepository _recordRepo;
   final SettingsRepository _settingsRepo;
+  final ShareService _share;
+  final FilePickService _filePick;
+  final AuthService _auth;
 
   List<RecordEntry> _records;
   AppSettings _settings;
   Goals _goals;
   List<String> _tags;
+  bool _pinIsSet;
 
   late final DateTime today;
 
@@ -94,6 +110,7 @@ class AppController extends ChangeNotifier {
   String? overlay; // 'goals' | 'tags' | 'about'
   bool locked = false;
   String lockInput = '';
+  bool lockError = false; // 上次 PIN 校验失败（用于抖动反馈）
   late int calY;
   late int calM;
   late String selectedDate;
@@ -491,25 +508,55 @@ class AppController extends ChangeNotifier {
   }
 
   // ---- 锁屏 ----
+  bool get hasPin => _pinIsSet;
+
   void lockNow() {
+    if (!_pinIsSet) {
+      flash('请先在设置里开启 App 锁并设置密码');
+      return;
+    }
     locked = true;
     lockInput = '';
+    lockError = false;
     notifyListeners();
   }
 
-  void unlockWithFaceId() {
-    locked = false;
-    lockInput = '';
+  /// 设置/修改 PIN（成功后标记已设并持久化）。
+  Future<void> setPin(String pin) async {
+    await _settingsRepo.setPin(pin);
+    _pinIsSet = true;
     notifyListeners();
   }
 
-  void pressDigit(String n) {
-    final v = (lockInput + n);
-    if (v.length >= 6) {
-      lockInput = '';
+  /// 生物识别解锁：仅当开启且设备支持且系统校验通过才解锁。
+  Future<void> tryBiometricUnlock() async {
+    if (!_settings.biometric) return;
+    final ok = await _auth.authenticate('解锁 $appName');
+    if (ok) {
       locked = false;
-    } else {
+      lockInput = '';
+      lockError = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> pressDigit(String n) async {
+    if (lockError) lockError = false;
+    final v = lockInput + n;
+    if (v.length < 6) {
       lockInput = v;
+      notifyListeners();
+      return;
+    }
+    // 满 6 位 → 校验
+    final ok = await _settingsRepo.verifyPin(v);
+    if (ok) {
+      locked = false;
+      lockInput = '';
+      lockError = false;
+    } else {
+      lockInput = '';
+      lockError = true;
     }
     notifyListeners();
   }
@@ -517,8 +564,39 @@ class AppController extends ChangeNotifier {
   void backspaceDigit() {
     if (lockInput.isNotEmpty) {
       lockInput = lockInput.substring(0, lockInput.length - 1);
+      lockError = false;
       notifyListeners();
     }
+  }
+
+  /// 开启生物识别前先检查设备是否支持；不支持则提示且不开启。
+  Future<void> toggleBiometric() async {
+    if (!_settings.biometric) {
+      final available = await _auth.isBiometricAvailable();
+      if (!available) {
+        flash('此设备不支持生物识别');
+        return;
+      }
+    }
+    _settings = _settings.copyWith(biometric: !_settings.biometric);
+    _persistSettings();
+    notifyListeners();
+  }
+
+  /// 关闭 App 锁：清除已存 PIN。
+  Future<void> disableAppLock() async {
+    _settings = _settings.copyWith(appLock: false);
+    _persistSettings();
+    await _settingsRepo.clearPin();
+    _pinIsSet = false;
+    notifyListeners();
+  }
+
+  /// 开启 App 锁（在 UI 完成设密码后调用）。
+  void enableAppLock() {
+    _settings = _settings.copyWith(appLock: true);
+    _persistSettings();
+    notifyListeners();
   }
 
   // ---- 数据 ----
@@ -529,10 +607,94 @@ class AppController extends ChangeNotifier {
     flash('已清空全部数据');
   }
 
-  void exportCsv() => flash('已导出 CSV');
-  void exportJson() => flash('已导出 JSON');
-  void importData() => flash('已导入数据');
-  void backup() => flash('已创建加密备份');
+  String _fileStamp() {
+    final n = DateTime.now();
+    return '${n.year}${pad2(n.month)}${pad2(n.day)}-${pad2(n.hour)}${pad2(n.minute)}';
+  }
+
+  String currentBackupJson() => BackupService.buildBackupJson(
+        records: _records,
+        settings: _settings,
+        goals: _goals,
+        tags: _tags,
+      );
+
+  Future<void> exportCsv() async {
+    try {
+      final csv = BackupService.recordsToCsv(_records);
+      await _share.shareTextFile('daolema-records-${_fileStamp()}.csv', csv,
+          subject: '导了吗 · 记录导出');
+      flash('已导出 CSV');
+    } catch (_) {
+      flash('导出失败');
+    }
+  }
+
+  Future<void> exportJson() async {
+    try {
+      await _share.shareTextFile('daolema-backup-${_fileStamp()}.json',
+          currentBackupJson(),
+          subject: '导了吗 · 数据备份');
+      flash('已导出 JSON');
+    } catch (_) {
+      flash('导出失败');
+    }
+  }
+
+  /// 用口令创建加密备份并分享。
+  Future<void> createEncryptedBackup(String passphrase) async {
+    try {
+      final enc = await BackupService.encryptBackup(currentBackupJson(), passphrase);
+      await _share.shareTextFile('daolema-encrypted-${_fileStamp()}.json', enc,
+          subject: '导了吗 · 加密备份');
+      flash('已创建加密备份');
+    } catch (_) {
+      flash('备份失败');
+    }
+  }
+
+  /// 选择导入文件（供设置页编排使用）。
+  Future<PickedFile?> pickImportFile() => _filePick.pickImportFile();
+
+  /// 应用导入的记录：overwrite=覆盖（清空后写入），否则按 id 合并。
+  Future<void> applyImportedRecords(
+    List<RecordEntry> recs, {
+    required bool overwrite,
+  }) async {
+    if (overwrite) {
+      _records = recs;
+      notifyListeners();
+      await _recordRepo.clear();
+      await _recordRepo.saveAll(recs);
+    } else {
+      final map = {for (final r in _records) r.id: r};
+      for (final r in recs) {
+        map[r.id] = r;
+      }
+      _records = map.values.toList();
+      notifyListeners();
+      await _recordRepo.saveAll(recs);
+    }
+    flash(overwrite ? '已覆盖导入 ${recs.length} 条' : '已合并导入 ${recs.length} 条');
+  }
+
+  void restoreSettings(AppSettings s) {
+    _settings = s;
+    _persistSettings();
+    notifyListeners();
+  }
+
+  void restoreGoals(Goals g) {
+    _goals = g;
+    _persistGoals();
+    notifyListeners();
+  }
+
+  void restoreTags(List<String> t) {
+    _tags = t;
+    _settingsRepo.saveTags(t);
+    notifyListeners();
+  }
 
   @override
   void dispose() {

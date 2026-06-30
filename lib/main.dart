@@ -30,6 +30,7 @@ Future<void> main() async {
     settings: settingsRepo.loadSettings(),
     goals: settingsRepo.loadGoals(),
     tags: settingsRepo.loadTags(),
+    pinIsSet: await settingsRepo.hasPin(),
   );
 
   runApp(

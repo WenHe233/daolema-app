@@ -60,8 +60,8 @@ class AppSettings {
   const AppSettings({
     this.theme = ThemeKey.light,
     this.accent = AccentKey.green,
-    this.appLock = true,
-    this.biometric = true,
+    this.appLock = false,
+    this.biometric = false,
     this.disguise = false,
     this.blurNotif = true,
     this.weekStartMonday = true,
