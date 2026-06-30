@@ -1,0 +1,20 @@
+name: Nightly Pre-release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: nightly-pre-release
+  cancel-in-progress: true
+
+jobs:
+  nightly:
+    uses: ./.github/workflows/release.yml
+    with:
+      release_channel: nightly
+    secrets: inherit

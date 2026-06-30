@@ -1,17 +1,31 @@
-name: Build and Release
+name: Release
 
 on:
   push:
-    branches: [main]
     tags: ['v*']
-  workflow_dispatch:
+  workflow_call:
+    inputs:
+      release_channel:
+        description: stable or nightly
+        required: false
+        default: stable
+        type: string
+    secrets:
+      ANDROID_KEYSTORE_BASE64:
+        required: false
+      ANDROID_KEYSTORE_PASSWORD:
+        required: false
+      ANDROID_KEY_ALIAS:
+        required: false
+      ANDROID_KEY_PASSWORD:
+        required: false
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'nightly' }}
-  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
+  group: release-${{ inputs.release_channel == 'nightly' && 'nightly' || github.ref_name }}
+  cancel-in-progress: ${{ inputs.release_channel == 'nightly' }}
 
 env:
   FLUTTER_VERSION: '3.44.2'
@@ -33,6 +47,8 @@ jobs:
       - name: Resolve version
         id: version
         shell: bash
+        env:
+          RELEASE_CHANNEL: ${{ inputs.release_channel || 'stable' }}
         run: |
           set -euo pipefail
           pubspec_version="$(sed -n 's/^version:[[:space:]]*//p' pubspec.yaml | head -n 1)"
@@ -42,7 +58,11 @@ jobs:
             exit 1
           fi
 
-          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+          if [[ "$RELEASE_CHANNEL" == stable ]]; then
+            if [[ "$GITHUB_REF" != refs/tags/v* ]]; then
+              echo "Stable releases must run from a vX.Y.Z tag." >&2
+              exit 1
+            fi
             release_tag="$GITHUB_REF_NAME"
             tag_version="${release_tag#v}"
             if [[ ! "$tag_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -57,7 +77,7 @@ jobs:
             display_version="v$tag_version"
             artifact_label="$tag_version"
             release_name="v$tag_version"
-          else
+          elif [[ "$RELEASE_CHANNEL" == nightly ]]; then
             timestamp="$(date -u +%Y%m%d.%H%M)"
             short_sha="${GITHUB_SHA:0:7}"
             channel=nightly
@@ -65,6 +85,9 @@ jobs:
             artifact_label=nightly
             release_tag=nightly
             release_name="Nightly ${timestamp} (${short_sha})"
+          else
+            echo "Unsupported release channel: $RELEASE_CHANNEL" >&2
+            exit 1
           fi
 
           {

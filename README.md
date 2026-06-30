@@ -64,7 +64,7 @@ lib/
 test/                        纯逻辑单测（算法/调色板 · CSV/JSON/加密/PIN 往返）
 linux/packaging/             AppImage / DEB 打包脚本与桌面入口
 windows/packaging/           Inno Setup 安装器配置
-.github/workflows/           日常检查 · 五平台 Release / Nightly
+.github/workflows/           五平台正式版 · Nightly pre-release
 ```
 
 ## 数据与隐私
@@ -81,9 +81,7 @@ windows/packaging/           Inno Setup 安装器配置
 
 ## CI 与发布
 
-日常检查由 `.github/workflows/build.yml` 执行：PR、非 `main` 分支 push 或手动触发时运行静态分析、单元测试、Android release APK 构建和 iOS 无签名编译检查。
-
-`.github/workflows/release.yml` 负责五平台发布，并在所有分析、测试和构建成功后上传：
+`.github/workflows/release.yml` 是五平台正式发布与可复用构建流程，`.github/workflows/pre-release.yml` 调用它生成 nightly。两条流程都会先执行静态分析、单元测试和代码生成一致性检查，并在全部平台构建成功后上传：
 
 - `Daolema-<版本>-android.apk`
 - `Daolema-<版本>-windows-x64-setup.exe`
@@ -106,7 +104,7 @@ tag 必须与 `pubspec.yaml` 的基础版本一致。流水线会创建正式 Gi
 
 ### Nightly
 
-每次 push 到 `main` 都会构建 nightly；手动运行发布工作流也按 nightly 处理。nightly 使用固定的 `nightly` tag 和 pre-release，资产名称固定并覆盖上一版，应用内显示版本包含 UTC 时间与短 commit SHA。
+每次 push 到 `main` 都会触发 `pre-release.yml` 构建 nightly；手动运行该工作流也执行相同行为。nightly 使用固定的 `nightly` tag 和 pre-release，资产名称固定并覆盖上一版，应用内显示版本包含 UTC 时间与短 commit SHA。
 
 ### Android 签名
 
