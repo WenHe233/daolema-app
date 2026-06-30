@@ -51,21 +51,30 @@ lib/
   data/
     db/                      drift Records 表
     models/                  RecordEntry · Goals · AppSettings
-    repositories/            记录仓库(drift) · 设置仓库(prefs+secure)
+    repositories/            记录仓库(drift) · 设置仓库(prefs+secure，PIN 加盐哈希)
     seed/                    mulberry32 演示数据生成
+    backup_service.dart      CSV/JSON 编解码 · AES-GCM+PBKDF2 加密（纯逻辑，可单测）
+    share_service.dart       临时文件 + 系统分享面板(share_plus)
+    file_pick_service.dart   选择导入文件(file_selector)
+    auth_service.dart        生物识别(local_auth)
   state/app_controller.dart  全局状态 + 行为 + 持久化（移植自原型 renderVals）
-  util/                      日期 · 统计/热力图纯函数 · SVG 图标
-  widgets/                   iOS 开关/分组卡/分段切换/进度条/logo/底部导航/Toast
+  util/                      日期 · 统计/热力图纯函数 · SVG 图标 · pin_crypto
+  widgets/                   iOS 开关/分组卡/分段切换/进度条/logo/底部导航/Toast/pin_pad
   features/                  home / calendar / stats / settings / record / overlays / lock
-test/                        纯逻辑单测（算法与调色板）
+test/                        纯逻辑单测（算法/调色板 · CSV/JSON/加密/PIN 往返）
 ```
 
 ## 数据与隐私
 
 - 数据**仅保存在本机**（SQLite + 本地 key-value）。
 - 首次启动写入约一年的种子演示数据（基于固定随机种子，可复现）；可在设置页「清空全部数据」清除。
-- 锁屏当前沿用原型行为（任意 6 位或 Face ID 解锁），已预留真实 PIN 校验接口。
-- 数据导出/导入/加密备份当前为提示占位（与原型一致），可在此基础上接入真实文件读写。
+- **锁屏（真实）**：6 位数字 PIN，仅以「随机盐 + SHA-256 哈希」存入 `flutter_secure_storage`（PIN 本身不落盘），解锁时校验、错误抖动提示。开启 App 锁时引导设置密码，设置页可「修改密码」。
+- **生物识别（真实）**：通过 `local_auth` 调系统 Face ID / 指纹；开启前检测设备支持，锁屏提供「使用 Face ID」。
+- **导出（真实）**：导出 CSV（仅记录）或 JSON（记录 + 设置 + 目标 + 标签），经系统分享面板交付。
+- **加密备份（真实）**：口令派生密钥（PBKDF2-HMAC-SHA256）+ AES-GCM 加密为 JSON 信封后分享。
+- **导入（真实）**：选择文件后自动识别「加密信封 / JSON / CSV」（加密的先要口令解密），再询问「合并（按 id 去重）」或「覆盖（清空后导入）」。
+
+> 平台说明：导出/分享在 iOS/Android 走原生分享面板；`local_auth` 仅真机可用（桌面/不支持的设备会提示不可用）。
 
 ## CI
 

@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../data/backup_service.dart';
+import '../../data/models/record_entry.dart';
 import '../../state/app_controller.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/palette.dart';
 import '../../widgets/common.dart';
 import '../../widgets/ios_switch.dart';
+import '../lock/set_pin_sheet.dart';
+import 'passphrase_dialog.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({super.key});
@@ -67,16 +71,24 @@ class SettingsPage extends StatelessWidget {
               subtitle: '打开后启动需要验证',
               trailing: AppSwitch(
                 value: s.appLock,
-                onTap: () => c.toggleSetting('appLock'),
+                onTap: () => _toggleAppLock(context, c),
                 palette: p,
               ),
             ),
+            ?(s.appLock
+                ? SettingsRow(
+                    palette: p,
+                    title: '修改密码',
+                    trailing: chevron(),
+                    onTap: () => _changePin(context, c),
+                  )
+                : null),
             SettingsRow(
               palette: p,
               title: '指纹 / Face ID 解锁',
               trailing: AppSwitch(
                 value: s.biometric,
-                onTap: () => c.toggleSetting('biometric'),
+                onTap: () => c.toggleBiometric(),
                 palette: p,
               ),
             ),
@@ -140,13 +152,17 @@ class SettingsPage extends StatelessWidget {
             ),
             SettingsRow(palette: p, title: '导出 CSV', trailing: chevron(), onTap: c.exportCsv),
             SettingsRow(palette: p, title: '导出 JSON', trailing: chevron(), onTap: c.exportJson),
-            SettingsRow(palette: p, title: '导入数据', trailing: chevron(), onTap: c.importData),
+            SettingsRow(
+                palette: p,
+                title: '导入数据',
+                trailing: chevron(),
+                onTap: () => _import(context, c)),
             SettingsRow(
               palette: p,
               title: '加密备份',
               subtitle: '本地优先 · 端到端加密',
               trailing: chevron(),
-              onTap: c.backup,
+              onTap: () => _backup(context, c),
             ),
           ],
         ),
@@ -191,6 +207,103 @@ class SettingsPage extends StatelessWidget {
               style: AppText.body(size: 12, color: p.ink3)),
         ),
       ],
+    );
+  }
+
+  // ---- App 锁 / PIN ----
+  Future<void> _toggleAppLock(BuildContext context, AppController c) async {
+    if (c.settings.appLock) {
+      await c.disableAppLock();
+      return;
+    }
+    final pin = await showSetPinSheet(context, c.palette);
+    if (pin == null) return;
+    await c.setPin(pin);
+    c.enableAppLock();
+  }
+
+  Future<void> _changePin(BuildContext context, AppController c) async {
+    final pin = await showSetPinSheet(context, c.palette, isChange: true);
+    if (pin == null) return;
+    await c.setPin(pin);
+    c.flash('密码已更新');
+  }
+
+  // ---- 加密备份 ----
+  Future<void> _backup(BuildContext context, AppController c) async {
+    final pass = await showPassphraseDialog(context, c.palette,
+        confirm: true, title: '设置备份口令');
+    if (pass == null) return;
+    await c.createEncryptedBackup(pass);
+  }
+
+  // ---- 导入（自动识别 加密 / JSON / CSV，再问合并或覆盖）----
+  Future<void> _import(BuildContext context, AppController c) async {
+    final picked = await c.pickImportFile();
+    if (picked == null) return;
+    var text = picked.content;
+    try {
+      if (BackupService.isEncryptedEnvelope(text)) {
+        if (!context.mounted) return;
+        final pass = await showPassphraseDialog(context, c.palette,
+            confirm: false, title: '解密备份');
+        if (pass == null) return;
+        text = await BackupService.decryptBackup(text, pass);
+      }
+      List<RecordEntry> recs;
+      BackupParseResult? parsed;
+      final head = text.trimLeft();
+      if (head.startsWith('{') || head.startsWith('[')) {
+        parsed = BackupService.parseBackupJson(text);
+        recs = parsed.records;
+      } else {
+        recs = BackupService.recordsFromCsv(text);
+      }
+      if (recs.isEmpty) {
+        c.flash('未发现可导入的记录');
+        return;
+      }
+      if (!context.mounted) return;
+      final overwrite = await _askImportMode(context, c, recs.length);
+      if (overwrite == null) return;
+      await c.applyImportedRecords(recs, overwrite: overwrite);
+      if (parsed != null) {
+        if (parsed.settings != null) c.restoreSettings(parsed.settings!);
+        if (parsed.goals != null) c.restoreGoals(parsed.goals!);
+        if (parsed.tags != null) c.restoreTags(parsed.tags!);
+      }
+    } catch (_) {
+      c.flash('导入失败：口令错误或文件损坏');
+    }
+  }
+
+  /// 返回 true=覆盖，false=合并，null=取消。
+  Future<bool?> _askImportMode(BuildContext context, AppController c, int count) {
+    final p = c.palette;
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: p.surface,
+        title: Text('导入 $count 条记录', style: AppText.serif(size: 18, color: p.ink)),
+        content: Text('选择「合并」追加到现有数据，或「覆盖」清空后再导入。',
+            style: AppText.body(size: 14, color: p.ink2, height: 1.5)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('取消', style: AppText.body(size: 15, color: p.ink2)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text('合并',
+                style: AppText.body(size: 15, weight: FontWeight.w600, color: p.accent)),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('覆盖',
+                style: AppText.body(size: 15, weight: FontWeight.w600, color: AppPalette.danger)),
+          ),
+        ],
+      ),
     );
   }
 
