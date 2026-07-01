@@ -121,14 +121,26 @@ StatsData computeStats(
   String range,
   bool weekStartMonday,
 ) {
-  final int days;
+  final DateTime nominalStart;
   if (range == 'year') {
-    final jan = DateTime(today.year, 1, 1);
-    days = midnight(today).difference(jan).inDays + 1;
+    nominalStart = DateTime(today.year, 1, 1);
   } else {
-    days = int.parse(range);
+    final n = int.parse(range);
+    nominalStart = midnight(today).subtract(Duration(days: n - 1));
   }
-  final startDay = midnight(today).subtract(Duration(days: days - 1));
+
+  // 保底下限：账号首条记录日期。使用时间短于所选周期时，以它收紧起点，
+  // 避免「日均」被固定周期长度稀释；使用时间足够长时不影响原逻辑。
+  DateTime? firstRecordDay;
+  for (final r in records) {
+    final d = midnight(r.when);
+    if (firstRecordDay == null || d.isBefore(firstRecordDay)) firstRecordDay = d;
+  }
+
+  final startDay = (firstRecordDay != null && firstRecordDay.isAfter(nominalStart))
+      ? firstRecordDay
+      : nominalStart;
+  final days = midnight(today).difference(startDay).inDays + 1;
   final inR = records.where((r) => !r.when.isBefore(startDay)).toList();
 
   final perDay = <String, int>{};
@@ -190,7 +202,9 @@ StatsData computeStats(
     todBars: todBars,
     tagRank: topTags,
     avgDaily: (rangeTotal / days).toStringAsFixed(1),
-    trendStart: range == 'year' ? '1月' : '$days天前',
+    trendStart: range == 'year'
+        ? (startDay.month == 1 && startDay.day == 1 ? '1月' : '${startDay.month}月')
+        : '$days天前',
     trendEnd: '今天',
   );
 }
