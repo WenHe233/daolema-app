@@ -28,7 +28,16 @@ void main() {
 
       expect(stats.avgDaily, '1.3'); // 4 次 / 3 天，而不是 4 / 7
       expect(stats.trend.length, 3);
-      expect(stats.trendStart, '3天前');
+      expect(stats.trendStart, '2天前'); // 起点 06-29 真实距今天 2 天，而不是「3天前」
+    });
+
+    test('新用户：仅当天 1 条记录时，起点标签显示「今天」而不是「0天前」', () {
+      final records = [_rec('2026-07-01', 1)];
+      final stats = computeStats(records, today, '7', false);
+
+      expect(stats.avgDaily, '1.0');
+      expect(stats.trend.length, 1);
+      expect(stats.trendStart, '今天');
     });
 
     test('老用户：使用时间足够长时，行为与固定周期一致', () {

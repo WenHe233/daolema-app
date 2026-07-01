@@ -137,9 +137,8 @@ StatsData computeStats(
     if (firstRecordDay == null || d.isBefore(firstRecordDay)) firstRecordDay = d;
   }
 
-  final startDay = (firstRecordDay != null && firstRecordDay.isAfter(nominalStart))
-      ? firstRecordDay
-      : nominalStart;
+  final firstRecordIsLater = firstRecordDay != null && firstRecordDay.isAfter(nominalStart);
+  final startDay = firstRecordIsLater ? firstRecordDay : nominalStart;
   final days = midnight(today).difference(startDay).inDays + 1;
   final inR = records.where((r) => !r.when.isBefore(startDay)).toList();
 
@@ -204,7 +203,9 @@ StatsData computeStats(
     avgDaily: (rangeTotal / days).toStringAsFixed(1),
     trendStart: range == 'year'
         ? (startDay.month == 1 && startDay.day == 1 ? '1月' : '${startDay.month}月')
-        : '$days天前',
+        : (firstRecordIsLater
+            ? (days == 1 ? '今天' : '${days - 1}天前')
+            : '$days天前'),
     trendEnd: '今天',
   );
 }
