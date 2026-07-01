@@ -4,7 +4,7 @@
 /// `pubspec.yaml` 的基础版本。升级版本时请同步更新这里的默认值。
 const String kAppVersion = String.fromEnvironment(
   'APP_VERSION',
-  defaultValue: 'v1.0.1',
+  defaultValue: 'v1.0.2',
 );
 
 /// 项目仓库地址。
