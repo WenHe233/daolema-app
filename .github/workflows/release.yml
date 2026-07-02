@@ -289,14 +289,22 @@ jobs:
         run: |
           set -euo pipefail
           cd /tmp
+          # linuxdeploy 主包：pinned + sha256 校验。
           curl -fL --retry 5 --retry-delay 3 --retry-all-errors \
             -o linuxdeploy-x86_64.AppImage \
             https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20250213-2/linuxdeploy-x86_64.AppImage
-          curl -fL --retry 5 --retry-delay 3 --retry-all-errors \
-            -o linuxdeploy-plugin-appimage-x86_64.AppImage \
-            https://github.com/linuxdeploy-plugin-appimage/releases/download/continuous/linuxdeploy-plugin-appimage-x86_64.AppImage
           echo '4648f278ab3ef31f819e67c30d50f462640e5365a77637d7e6f2ad9fd0b4522a  linuxdeploy-x86_64.AppImage' | sha256sum -c -
-          # plugin-appimage 的 1-alpha release asset 在 CI 端稳定 404，改用官方 continuous 滚动版（内容会变，不做 sha256 pin）。
+          # plugin-appimage 的 releases/download 短链在 CI 端稳定 404（prerelease asset
+          # 重定向异常），改走 GitHub API asset 端点 + Accept: octet-stream 下载 continuous
+          # 版的 x86_64 资源；该版本内容会变，不做 sha256 pin。
+          plugin_asset_url="$(curl -fsSL \
+            https://api.github.com/repos/linuxdeploy/linuxdeploy-plugin-appimage/releases/tags/continuous \
+            | python3 -c 'import sys,json; a=[x for x in json.load(sys.stdin)["assets"] if x["name"]=="linuxdeploy-plugin-appimage-x86_64.AppImage"]; print(a[0]["url"] if a else "")')"
+          [[ -n "$plugin_asset_url" ]] || { echo 'plugin-appimage asset not found' >&2; exit 1; }
+          curl -fL --retry 5 --retry-delay 3 --retry-all-errors \
+            -H 'Accept: application/octet-stream' \
+            -o linuxdeploy-plugin-appimage-x86_64.AppImage \
+            "$plugin_asset_url"
           sudo install -m 0755 linuxdeploy-x86_64.AppImage /usr/local/bin/linuxdeploy-x86_64.AppImage
           sudo install -m 0755 linuxdeploy-plugin-appimage-x86_64.AppImage /usr/local/bin/linuxdeploy-plugin-appimage
 
