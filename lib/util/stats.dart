@@ -19,11 +19,12 @@ Color heatColorFor(int count, bool future, List<Color> heat) {
   return heat[3];
 }
 
-/// 每个日期的次数合计（源原型 `countMap`）。
-Map<String, int> countMap(List<RecordEntry> records) {
+/// 每个日期的次数合计（源原型 `countMap`）。cutoff>0 时按熬夜逻辑日分组。
+Map<String, int> countMap(List<RecordEntry> records, [int cutoff = 0]) {
   final m = <String, int>{};
   for (final r in records) {
-    m[r.date] = (m[r.date] ?? 0) + r.occ;
+    final k = cutoff > 0 ? logicalDayKey(r.when, cutoff) : r.date;
+    m[k] = (m[k] ?? 0) + r.occ;
   }
   return m;
 }
@@ -115,12 +116,14 @@ int _timeBucket(int h) =>
     h < 6 ? 0 : h < 9 ? 1 : h < 12 ? 2 : h < 17 ? 3 : h < 20 ? 4 : 5;
 
 /// 区间统计（源原型 `computeStats`）。range ∈ {'7','30','90','year'}。
+/// cutoff>0 时按熬夜逻辑日分组（凌晨 0~cutoff 点的记录算前一天）。
 StatsData computeStats(
   List<RecordEntry> records,
   DateTime today,
   String range,
-  bool weekStartMonday,
-) {
+  bool weekStartMonday, [
+  int cutoff = 0,
+]) {
   final DateTime nominalStart;
   if (range == 'year') {
     nominalStart = DateTime(today.year, 1, 1);
@@ -133,18 +136,19 @@ StatsData computeStats(
   // 避免「日均」被固定周期长度稀释；使用时间足够长时不影响原逻辑。
   DateTime? firstRecordDay;
   for (final r in records) {
-    final d = midnight(r.when);
+    final d = midnight(logicalWhen(r.when, cutoff));
     if (firstRecordDay == null || d.isBefore(firstRecordDay)) firstRecordDay = d;
   }
 
   final firstRecordIsLater = firstRecordDay != null && firstRecordDay.isAfter(nominalStart);
   final startDay = firstRecordIsLater ? firstRecordDay : nominalStart;
   final days = midnight(today).difference(startDay).inDays + 1;
-  final inR = records.where((r) => !r.when.isBefore(startDay)).toList();
+  final inR = records.where((r) => !logicalWhen(r.when, cutoff).isBefore(startDay)).toList();
 
   final perDay = <String, int>{};
   for (final r in inR) {
-    perDay[r.date] = (perDay[r.date] ?? 0) + r.occ;
+    final k = cutoff > 0 ? logicalDayKey(r.when, cutoff) : r.date;
+    perDay[k] = (perDay[k] ?? 0) + r.occ;
   }
   final trend = <int>[];
   final trendDates = <DateTime>[];
@@ -157,7 +161,7 @@ StatsData computeStats(
 
   final wd = List.filled(7, 0);
   for (final r in inR) {
-    wd[jsDay(r.when)] += r.occ;
+    wd[jsDay(logicalWhen(r.when, cutoff))] += r.occ;
   }
   final ws = weekStartOffset(weekStartMonday);
   final maxWd = math.max(1, wd.fold(0, math.max));

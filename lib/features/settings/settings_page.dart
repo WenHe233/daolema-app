@@ -167,6 +167,58 @@ class SettingsPage extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 24),
+
+        // 统计
+        SectionHeader('统计', palette: p),
+        GroupedCard(
+          palette: p,
+          children: [
+            SettingsRow(
+              palette: p,
+              title: '熬夜模式',
+              subtitle: '凌晨记录算到前一天',
+              trailing: AppSwitch(
+                value: s.nightOwl,
+                onTap: () => c.setNightOwl(!s.nightOwl),
+                palette: p,
+              ),
+            ),
+            ?(s.nightOwl
+                ? SettingsRow(
+                    palette: p,
+                    title: '算到几点',
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        StepperButton(
+                          palette: p,
+                          icon: '−',
+                          size: 30,
+                          fontSize: 18,
+                          enabled: s.nightOwlCutoff > 1,
+                          onTap: () => c.setNightOwlCutoff(s.nightOwlCutoff - 1),
+                        ),
+                        SizedBox(
+                          width: 54,
+                          child: Text('${s.nightOwlCutoff} 点',
+                              textAlign: TextAlign.center,
+                              style: AppText.serif(size: 16, color: p.ink)),
+                        ),
+                        StepperButton(
+                          palette: p,
+                          icon: '+',
+                          size: 30,
+                          fontSize: 18,
+                          enabled: s.nightOwlCutoff < 12,
+                          onTap: () => c.setNightOwlCutoff(s.nightOwlCutoff + 1),
+                        ),
+                      ],
+                    ),
+                  )
+                : null),
+          ],
+        ),
         const SizedBox(height: 20),
 
         // 目标与关于

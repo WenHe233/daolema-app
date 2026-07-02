@@ -60,6 +60,7 @@ class GoalsOverlay extends StatelessWidget {
                 value: '${g.weekMax} 次',
                 onMinus: () => c.setGoalValue('weekMax', (g.weekMax - 1).clamp(1, 999)),
                 onPlus: () => c.setGoalValue('weekMax', g.weekMax + 1),
+                minusEnabled: g.weekMax > 1,
               ),
               _StepperRow(
                 palette: p,
@@ -67,6 +68,7 @@ class GoalsOverlay extends StatelessWidget {
                 value: '${g.monthMax} 次',
                 onMinus: () => c.setGoalValue('monthMax', (g.monthMax - 1).clamp(1, 999)),
                 onPlus: () => c.setGoalValue('monthMax', g.monthMax + 1),
+                minusEnabled: g.monthMax > 1,
               ),
             ],
           ),
@@ -89,6 +91,7 @@ class GoalsOverlay extends StatelessWidget {
                   value: '${g.minGap} 小时',
                   onMinus: () => c.setGoalValue('minGap', (g.minGap - 1).clamp(1, 999)),
                   onPlus: () => c.setGoalValue('minGap', g.minGap + 1),
+                  minusEnabled: g.minGap > 1,
                 ),
             ],
           ),
@@ -150,12 +153,14 @@ class _StepperRow extends StatelessWidget {
     required this.onPlus,
     this.labelColor,
     this.labelSize = 15,
+    this.minusEnabled = true,
   });
   final AppPalette palette;
   final String label, value;
   final VoidCallback onMinus, onPlus;
   final Color? labelColor;
   final double labelSize;
+  final bool minusEnabled;
 
   @override
   Widget build(BuildContext context) {
@@ -168,7 +173,7 @@ class _StepperRow extends StatelessWidget {
           Text(label, style: AppText.body(size: labelSize, color: labelColor ?? p.ink)),
           Row(
             children: [
-              StepperButton(palette: p, icon: '−', onTap: onMinus, size: 30, fontSize: 18),
+              StepperButton(palette: p, icon: '−', onTap: onMinus, size: 30, fontSize: 18, enabled: minusEnabled),
               const SizedBox(width: 14),
               SizedBox(
                 width: 54,

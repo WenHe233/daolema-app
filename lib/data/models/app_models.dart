@@ -65,6 +65,8 @@ class AppSettings {
     this.disguise = false,
     this.blurNotif = true,
     this.weekStartMonday = true,
+    this.nightOwl = false,
+    this.nightOwlCutoff = 6,
   });
 
   final ThemeKey theme;
@@ -74,6 +76,8 @@ class AppSettings {
   final bool disguise;
   final bool blurNotif;
   final bool weekStartMonday;
+  final bool nightOwl; // 熬夜模式：0点~cutoff 点的记录算在前一天
+  final int nightOwlCutoff; // 熬夜模式 cutoff（1~12）
 
   AppSettings copyWith({
     ThemeKey? theme,
@@ -83,6 +87,8 @@ class AppSettings {
     bool? disguise,
     bool? blurNotif,
     bool? weekStartMonday,
+    bool? nightOwl,
+    int? nightOwlCutoff,
   }) =>
       AppSettings(
         theme: theme ?? this.theme,
@@ -92,6 +98,8 @@ class AppSettings {
         disguise: disguise ?? this.disguise,
         blurNotif: blurNotif ?? this.blurNotif,
         weekStartMonday: weekStartMonday ?? this.weekStartMonday,
+        nightOwl: nightOwl ?? this.nightOwl,
+        nightOwlCutoff: nightOwlCutoff ?? this.nightOwlCutoff,
       );
 
   Map<String, dynamic> toJson() => {
@@ -102,6 +110,8 @@ class AppSettings {
         'disguise': disguise,
         'blurNotif': blurNotif,
         'weekStartMonday': weekStartMonday,
+        'nightOwl': nightOwl,
+        'nightOwlCutoff': nightOwlCutoff,
       };
 
   factory AppSettings.fromJson(Map<String, dynamic> j) => AppSettings(
@@ -112,6 +122,8 @@ class AppSettings {
         disguise: j['disguise'] as bool? ?? false,
         blurNotif: j['blurNotif'] as bool? ?? true,
         weekStartMonday: j['weekStartMonday'] as bool? ?? true,
+        nightOwl: j['nightOwl'] as bool? ?? false,
+        nightOwlCutoff: (j['nightOwlCutoff'] as num?)?.toInt() ?? 6,
       );
 }
 

@@ -211,6 +211,7 @@ class StepperButton extends StatelessWidget {
     required this.onTap,
     this.size = 32,
     this.fontSize = 20,
+    this.enabled = true,
   });
 
   final AppPalette palette;
@@ -218,12 +219,13 @@ class StepperButton extends StatelessWidget {
   final VoidCallback onTap;
   final double size;
   final double fontSize;
+  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: onTap,
+      onTap: enabled ? onTap : null,
       child: Container(
         width: size,
         height: size,
@@ -233,7 +235,8 @@ class StepperButton extends StatelessWidget {
           border: Border.all(color: palette.line),
         ),
         child: Text(icon,
-            style: AppText.body(size: fontSize, color: palette.ink2, height: 1)),
+            style: AppText.body(
+                size: fontSize, color: enabled ? palette.ink2 : palette.ink3, height: 1)),
       ),
     );
   }

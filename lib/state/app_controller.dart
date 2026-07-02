@@ -84,7 +84,7 @@ class AppController extends ChangeNotifier {
        _share = shareService ?? ShareService(),
        _filePick = filePickService ?? FilePickService(),
        _auth = authService ?? AuthService() {
-    today = midnight(now ?? DateTime.now());
+    _now = now ?? DateTime.now();
     calY = today.year;
     calM = today.month - 1; // 0-based，对齐源原型
     selectedDate = dateKey(today);
@@ -102,8 +102,11 @@ class AppController extends ChangeNotifier {
   Goals _goals;
   List<String> _tags;
   bool _pinIsSet;
+  late DateTime _now;
 
-  late final DateTime today;
+  /// 逻辑今天：熬夜模式下 0~cutoff 点会被算到前一天，故"今天"前移一天。
+  DateTime get today => midnight(logicalWhen(_now, _cutoff));
+  int get _cutoff => _settings.nightOwl ? _settings.nightOwlCutoff : 0;
 
   // ---- UI 瞬时态 ----
   String activeTab = 'home';
@@ -145,6 +148,7 @@ class AppController extends ChangeNotifier {
 
   // ---- 计数 ----
   Counts get counts {
+    final cutoff = _cutoff;
     final tk = todayKey;
     final wkStart = startOfWeek(today, _settings.weekStartMonday);
     final wkEnd = wkStart.add(const Duration(days: 7));
@@ -154,11 +158,12 @@ class AppController extends ChangeNotifier {
     for (final r in _records) {
       final o = r.occ;
       tot += o;
-      if (r.date == tk) t += o;
-      final dt = r.when;
+      final dk = cutoff > 0 ? logicalDayKey(r.when, cutoff) : r.date;
+      if (dk == tk) t += o;
+      final dt = cutoff > 0 ? logicalWhen(r.when, cutoff) : r.when;
       if (!dt.isBefore(wkStart) && dt.isBefore(wkEnd)) w += o;
-      if (r.date.startsWith(ym)) m += o;
-      if (r.date.startsWith(yy)) y += o;
+      if (dk.startsWith(ym)) m += o;
+      if (dk.startsWith(yy)) y += o;
     }
     return Counts(t, w, m, y, tot);
   }
@@ -172,11 +177,13 @@ class AppController extends ChangeNotifier {
   String get recentWhen {
     final last = lastRecord;
     if (last == null) return '';
+    final cutoff = _cutoff;
+    final lk = cutoff > 0 ? logicalDayKey(last.when, cutoff) : last.date;
     final ld = last.when;
     final yd = today.subtract(const Duration(days: 1));
-    final dayText = last.date == todayKey
+    final dayText = lk == todayKey
         ? '今天'
-        : (last.date == dateKey(yd) ? '昨天' : '${ld.month}月${ld.day}日');
+        : (lk == dateKey(yd) ? '昨天' : '${ld.month}月${ld.day}日');
     return '$dayText ${last.timeText}';
   }
 
@@ -201,14 +208,14 @@ class AppController extends ChangeNotifier {
 
   // ---- 派生数据 ----
   HeatData get heat => buildHeat(
-    countMap(_records),
+    countMap(_records, _cutoff),
     today,
     _settings.weekStartMonday,
     palette.heat,
   );
 
   StatsData get statsData =>
-      computeStats(_records, today, range, _settings.weekStartMonday);
+      computeStats(_records, today, range, _settings.weekStartMonday, _cutoff);
 
   IntervalData get intervals => computeIntervals(_records, DateTime.now());
 
@@ -225,7 +232,7 @@ class AppController extends ChangeNotifier {
   List<CalCell> get calCells {
     final p = palette;
     final ws = weekStartOffset(_settings.weekStartMonday);
-    final cm = countMap(_records);
+    final cm = countMap(_records, _cutoff);
     final first = DateTime(calY, calM + 1, 1);
     final lead = (jsDay(first) - ws + 7) % 7;
     final dim = DateTime(calY, calM + 2, 0).day;
@@ -263,9 +270,13 @@ class AppController extends ChangeNotifier {
     return cells;
   }
 
-  List<RecordEntry> get selRecords =>
-      (_records.where((r) => r.date == selectedDate).toList())
-        ..sort((a, b) => a.when.compareTo(b.when));
+  List<RecordEntry> get selRecords {
+    final cutoff = _cutoff;
+    return (_records
+            .where((r) => (cutoff > 0 ? logicalDayKey(r.when, cutoff) : r.date) == selectedDate)
+            .toList())
+      ..sort((a, b) => a.when.compareTo(b.when));
+  }
 
   int get selTotal => selRecords.fold(0, (s, r) => s + r.occ);
 
@@ -302,19 +313,16 @@ class AppController extends ChangeNotifier {
     });
   }
 
-  String _nowTime() {
-    final n = DateTime.now();
-    return '${pad2(n.hour)}:${pad2(n.minute)}';
-  }
-
   SheetDraft _blankSheet([String? date]) =>
-      SheetDraft(date: date ?? todayKey, time: _nowTime());
+      // 补录默认 12:00（白天，≥cutoff），使记录的物理日=逻辑日=所选日。
+      SheetDraft(date: date ?? dateKey(DateTime.now()), time: '12:00');
 
   Future<void> oneClick() async {
     final n = DateTime.now();
     final rec = RecordEntry(
       id: 'r${DateTime.now().millisecondsSinceEpoch}',
-      date: todayKey,
+      // date 存物理今天；熬夜模式下凌晨记录的逻辑日会由读取代码换算到前一天。
+      date: dateKey(n),
       hour: n.hour,
       minute: n.minute,
       count: 1,
@@ -456,6 +464,18 @@ class AppController extends ChangeNotifier {
 
   void setAccent(AccentKey a) {
     _settings = _settings.copyWith(accent: a);
+    _persistSettings();
+    notifyListeners();
+  }
+
+  void setNightOwl(bool v) {
+    _settings = _settings.copyWith(nightOwl: v);
+    _persistSettings();
+    notifyListeners();
+  }
+
+  void setNightOwlCutoff(int v) {
+    _settings = _settings.copyWith(nightOwlCutoff: v.clamp(1, 12));
     _persistSettings();
     notifyListeners();
   }

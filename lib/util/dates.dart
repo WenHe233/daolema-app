@@ -20,3 +20,16 @@ DateTime startOfWeek(DateTime d, bool weekStartMonday) {
   final diff = (jsDay(x) - weekStartOffset(weekStartMonday) + 7) % 7;
   return x.subtract(Duration(days: diff));
 }
+
+/// 熬夜模式下的「逻辑时刻」：0 点到 cutoff 点（不含）之间的时刻归到前一天。
+/// cutoff=0 时原样返回（逻辑日≡物理日）。
+DateTime logicalWhen(DateTime when, int cutoff) {
+  if (cutoff > 0 && when.hour < cutoff) {
+    return when.subtract(const Duration(days: 1));
+  }
+  return when;
+}
+
+/// 记录归属的「逻辑日」key（YYYY-MM-DD），用于所有按天分组。
+String logicalDayKey(DateTime when, int cutoff) =>
+    dateKey(logicalWhen(when, cutoff));
