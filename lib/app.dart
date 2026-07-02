@@ -13,6 +13,7 @@ import 'features/settings/settings_page.dart';
 import 'features/stats/stats_page.dart';
 import 'state/app_controller.dart';
 import 'theme/app_theme.dart';
+import 'theme/palette.dart';
 import 'widgets/app_toast.dart';
 import 'widgets/bottom_nav.dart';
 
@@ -21,19 +22,21 @@ class DaolemaApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final palette = context.watch<AppController>().palette;
-    return MaterialApp(
-      title: '导了吗',
-      debugShowCheckedModeBanner: false,
-      theme: buildTheme(palette),
-      locale: const Locale('zh', 'CN'),
-      supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      home: const RootShell(),
+    return Selector<AppController, AppPalette>(
+      selector: (_, c) => c.palette,
+      builder: (_, palette, _) => MaterialApp(
+        title: '导了吗',
+        debugShowCheckedModeBanner: false,
+        theme: buildTheme(palette),
+        locale: const Locale('zh', 'CN'),
+        supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        home: const RootShell(),
+      ),
     );
   }
 }

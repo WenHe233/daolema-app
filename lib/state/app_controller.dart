@@ -108,6 +108,32 @@ class AppController extends ChangeNotifier {
   DateTime get today => midnight(logicalWhen(_now, _cutoff));
   int get _cutoff => _settings.nightOwl ? _settings.nightOwlCutoff : 0;
 
+  // 派生缓存：按 records 引用 + cutoff 失效。records 每次增删改都换新列表，
+  // identical 天然可靠，避免每次 build 都全量 sort / 遍历。
+  List<RecordEntry>? _sorted;
+  Map<String, int>? _cm;
+  List<RecordEntry>? _derivedKey;
+  int? _derivedCutoff;
+
+  void _ensureDerived() {
+    if (!identical(_derivedKey, _records) || _derivedCutoff != _cutoff) {
+      _sorted = [..._records]..sort((a, b) => a.when.compareTo(b.when));
+      _cm = countMap(_records, _cutoff);
+      _derivedKey = _records;
+      _derivedCutoff = _cutoff;
+    }
+  }
+
+  List<RecordEntry> get _sortedRecords {
+    _ensureDerived();
+    return _sorted!;
+  }
+
+  Map<String, int> get _countMap {
+    _ensureDerived();
+    return _cm!;
+  }
+
   // ---- UI 瞬时态 ----
   String activeTab = 'home';
   String? overlay; // 'goals' | 'tags' | 'about'
@@ -130,8 +156,20 @@ class AppController extends ChangeNotifier {
   AppSettings get settings => _settings;
   Goals get goals => _goals;
   List<String> get tags => _tags;
-  AppPalette get palette =>
-      AppPalette.resolve(_settings.theme, _settings.accent);
+  AppPalette? _paletteCache;
+  ThemeKey? _paletteTheme;
+  AccentKey? _paletteAccent;
+  AppPalette get palette {
+    // 仅在 theme/accent 变化时重新 resolve，保持实例稳定，使 Selector 可命中。
+    if (_paletteCache == null ||
+        _paletteTheme != _settings.theme ||
+        _paletteAccent != _settings.accent) {
+      _paletteCache = AppPalette.resolve(_settings.theme, _settings.accent);
+      _paletteTheme = _settings.theme;
+      _paletteAccent = _settings.accent;
+    }
+    return _paletteCache!;
+  }
 
   String get todayKey => dateKey(today);
 
@@ -170,8 +208,7 @@ class AppController extends ChangeNotifier {
 
   RecordEntry? get lastRecord {
     if (_records.isEmpty) return null;
-    final sorted = [..._records]..sort((a, b) => b.when.compareTo(a.when));
-    return sorted.first;
+    return _sortedRecords.last; // 升序，末尾即最新
   }
 
   String get recentWhen {
@@ -208,7 +245,7 @@ class AppController extends ChangeNotifier {
 
   // ---- 派生数据 ----
   HeatData get heat => buildHeat(
-    countMap(_records, _cutoff),
+    _countMap,
     today,
     _settings.weekStartMonday,
     palette.heat,
@@ -217,7 +254,11 @@ class AppController extends ChangeNotifier {
   StatsData get statsData =>
       computeStats(_records, today, range, _settings.weekStartMonday, _cutoff);
 
-  IntervalData get intervals => computeIntervals(_records, DateTime.now());
+  IntervalData get intervals => computeIntervals(
+    _records,
+    DateTime.now(),
+    sortedWhens: _sortedRecords.map((r) => r.when).toList(growable: false),
+  );
 
   List<Color> get legendColors => palette.heat;
 
@@ -232,7 +273,7 @@ class AppController extends ChangeNotifier {
   List<CalCell> get calCells {
     final p = palette;
     final ws = weekStartOffset(_settings.weekStartMonday);
-    final cm = countMap(_records, _cutoff);
+    final cm = _countMap;
     final first = DateTime(calY, calM + 1, 1);
     final lead = (jsDay(first) - ws + 7) % 7;
     final dim = DateTime(calY, calM + 2, 0).day;

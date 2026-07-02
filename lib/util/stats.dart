@@ -228,9 +228,13 @@ String _humanHours(double h) {
   return '${(h / 24).toStringAsFixed(1)} 天';
 }
 
-/// 间隔统计（源原型 `intervals`）。
-IntervalData computeIntervals(List<RecordEntry> records, DateTime now) {
-  final ds = records.map((r) => r.when).toList()..sort();
+/// 间隔统计（源原型 `intervals`）。可传入预排序的 when 列表以省去重复 sort。
+IntervalData computeIntervals(
+  List<RecordEntry> records,
+  DateTime now, {
+  List<DateTime>? sortedWhens,
+}) {
+  final ds = sortedWhens ?? records.map((r) => r.when).toList()..sort();
   if (ds.length < 2) return IntervalData('—', '—', '—');
   var sum = 0.0;
   var mx = 0.0;
